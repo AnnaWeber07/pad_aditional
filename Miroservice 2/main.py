@@ -6,12 +6,11 @@ from prometheus_client import start_http_server, Counter
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
 
-app = Flask ( __name__ )
-CORS ( app )  # Enable CORS for all routes
+app = Flask(__name__)
+CORS(app)  # Enable CORS for all routes
 
 # Prometheus Metrics
-requests_counter = Counter ( 'service2_requests_total', 'Total number of requests to Service 2' )
-
+requests_counter = Counter('service2_requests_total', 'Total number of requests to Service 2')
 
 # New Endpoint to Receive Joke and Send Email
 @app.route('/send-email', methods=['POST'])
@@ -48,15 +47,13 @@ def send_email():
         # Handle any exceptions (e.g., network issues) and return an error response
         return jsonify({'error': True, 'message': str(e)})
 
-
 # Health Endpoint
-@app.route ( '/health' )
+@app.route('/health', methods=['GET'])
 def health():
-    return jsonify ( {'status': 'Service 2 is healthy'} )
+    return jsonify({'status': 'Service 2 is healthy'})
 
-
-# ... Other middleware and configurations
+# ... Other business logic endpoints
 
 if __name__ == '__main__':
-    start_http_server ( 8002 )  # Expose Prometheus metrics on port 8002
-    app.run ( port=3002 )
+    start_http_server(8002)  # Expose Prometheus metrics on port 8002
+    app.run(port=3002)
