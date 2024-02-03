@@ -6,6 +6,7 @@ from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
 from flasgger import Swagger
 import http.client
+from timeout_decorator import timeout, TimeoutError
 import psycopg2
 
 app = Flask(__name__)
@@ -13,7 +14,7 @@ CORS(app)  # Enable CORS for all routes
 swagger = Swagger(app)  # Initialize Swagger
 
 # Prometheus Metrics
-requests_counter = Counter('service2_requests_total', 'Total number of requests to Service 2')
+service2_requests_total = Counter('service2_requests_total', 'Total number of requests to Service 2')
 
 # Database Connection
 conn = psycopg2.connect(
@@ -45,6 +46,31 @@ CREATE TABLE IF NOT EXISTS contents (
 
 cursor.execute(create_table_query)
 conn.commit()
+
+@timeout(10)  # Set a timeout of 10 seconds
+def send_email(content_data):
+    content_type = content_data.get('type')
+    setup_text = content_data.get('setup', 'No setup provided')
+    to_email = content_data.get('to')
+
+    if not content_type or content_type not in ['joke', 'news', 'webpage'] or not to_email:
+        raise ValueError('Invalid request parameters')
+
+    save_content_to_database(content_type, to_email, f"{setup_text} ")
+
+    subject = get_subject_based_on_type(content_type)
+    content = f"{setup_text} "
+
+    message = Mail(
+        from_email='heihnnreh@gmail.com',  # Replace with your email address
+        to_emails=to_email,
+        subject=subject,
+        plain_text_content=content
+    )
+
+    sg = SendGridAPIClient(api_key="")
+    response = sg.send(message)
+    print(f'Email sent to {to_email}. Response:', response.body)
 
 # New Endpoint to Receive Joke and Send Email
 @app.route('/send-email', methods=['POST'])
@@ -99,7 +125,7 @@ def send_email():
     content = f"{setup_text} "
 
     message = Mail(
-        from_email='heihnnreh@gmail.com',  # Replace with your email address
+        from_email='your@emai.com',  # Replace with your email address
         to_emails=to_email,
         subject=subject,
         plain_text_content=content
@@ -107,7 +133,7 @@ def send_email():
 
     # Send email using the SendGrid API
     try:
-        sg = SendGridAPIClient(api_key="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")
+        sg = SendGridAPIClient(api_key="api key")
         response = sg.send(message)
         print(f'Email sent to {to_email}. Response:', response.body)
         return jsonify({'status': 'Email sent successfully'})

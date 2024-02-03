@@ -2,8 +2,7 @@ version: '3'
 
 services:
   gateway:
-    build:
-      context: ./Gateway
+    image: your-gateway-image:latest
     ports:
       - "3000:3000"
     networks:
@@ -16,8 +15,7 @@ services:
     # Add other configurations as needed
 
   service1:
-    build:
-      context: ./Microservice 1
+    image: your-service1-image:latest
     ports:
       - "3001:3001"
       - "3101:3101"  # Additional instance
@@ -31,8 +29,7 @@ services:
     # Add other configurations as needed
 
   service2:
-    build:
-      context: ./Miroservice 2
+    image: your-service2-image:latest
     ports:
       - "3002:3002"
       - "3102:3102"  # Additional instance

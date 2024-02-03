@@ -1,27 +1,35 @@
-version: '3'
-
+version: '1'
 services:
-  microservice2:
+  microservice:
     build:
       context: .
+      dockerfile: Dockerfile
     ports:
       - "3002:3002"
-    environment:
-      - POSTGRES_HOST=postgres  # Replace with your actual Postgres container name or IP
-      - POSTGRES_PORT=5432
-      - POSTGRES_DB=postgres
-      - POSTGRES_USER=admin
-      - POSTGRES_PASSWORD=admin
     depends_on:
       - postgres
-    # Add other configurations as needed
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin
+      POSTGRES_DB: postgres
+      SENDGRID_API_KEY: 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
 
   postgres:
-    image: postgres:9.4
+    image: postgres
     ports:
       - "5432:5432"
     environment:
-      - POSTGRES_DB=postgres
-      - POSTGRES_USER=admin
-      - POSTGRES_PASSWORD=admin
-    # Add other configurations as needed
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin
+      POSTGRES_DB: postgres
+
+  prometheus:
+    image: prom/prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus:/etc/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
