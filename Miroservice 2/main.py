@@ -106,7 +106,130 @@ def save_email_to_database(to_email, subject, content):
     cursor.execute(insert_query, (to_email, subject, content))
     conn.commit()
 
-# ... (Other endpoints and configurations)
+# Email Validation Endpoint
+@app.route('/validate-email', methods=['POST'])
+def validate_email():
+    """
+    Validate an email address using an external API.
+    ---
+    parameters:
+      - name: email
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            email:
+              type: string
+    responses:
+      200:
+        description: Email validation result
+      400:
+        description: Invalid request or missing parameters
+    """
+    email = request.json.get('email')
+    if not email:
+        return jsonify({'error': True, 'message': 'Email not provided'})
+
+    # Validate email using the email-check API
+    conn = http.client.HTTPSConnection("email-validator8.p.rapidapi.com", timeout=30)
+    payload = f"email={email}"
+    headers = {
+        'content-type': "application/x-www-form-urlencoded",
+        'X-RapidAPI-Key': "074ca7a0c0msh5e211b173d20249p1d0b43jsn5c770313e32e",
+        'X-RapidAPI-Host': "email-validator8.p.rapidapi.com"
+    }
+
+    conn.request("POST", "/api/v2.0/email", payload, headers)
+    res = conn.getresponse()
+    data = res.read()
+
+    return jsonify({'result': json.loads(data.decode("utf-8"))})
+
+
+# Paraphrase Text Endpoint
+@app.route('/paraphrase', methods=['POST'])
+def paraphrase_text():
+    """
+    Paraphrase text using an external API.
+    ---
+    parameters:
+      - name: text
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            text:
+              type: string
+    responses:
+      200:
+        description: Paraphrased text
+      400:
+        description: Invalid request or missing parameters
+    """
+    text_to_paraphrase = request.json.get('text')
+    if not text_to_paraphrase:
+        return jsonify({'error': True, 'message': 'Text not provided'})
+
+    # Paraphrase text using the paraphraser API
+    conn = http.client.HTTPSConnection("rewriter-paraphraser-text-changer-multi-language.p.rapidapi.com", timeout=30)
+    payload = {
+        "language": "en",
+        "strength": 3,
+        "text": text_to_paraphrase
+    }
+    headers = {
+        'content-type': "application/json",
+        'X-RapidAPI-Key': "074ca7a0c0msh5e211b173d20249p1d0b43jsn5c770313e32e",
+        'X-RapidAPI-Host': "rewriter-paraphraser-text-changer-multi-language.p.rapidapi.com"
+    }
+
+    conn.request("POST", "/rewrite", json.dumps(payload), headers)
+    res = conn.getresponse()
+    data = res.read()
+
+    return jsonify({'paraphrased_text': json.loads(data.decode("utf-8"))})
+
+
+# Scraping Endpoint
+@app.route('/scrape-url', methods=['POST'])
+def scrape_url():
+    """
+    Scrape data from a given URL.
+    ---
+    parameters:
+      - name: url
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            url:
+              type: string
+    responses:
+      200:
+        description: Scraped data
+      400:
+        description: Invalid request or missing parameters
+    """
+    url_to_scrape = request.json.get('url')
+    if not url_to_scrape:
+        return jsonify({'error': True, 'message': 'URL not provided'})
+
+    # Scrape data using the website scraper API
+    conn = http.client.HTTPSConnection("website-article-data-extraction-and-text-mining1.p.rapidapi.com", timeout=30)
+    headers = {
+        'X-RapidAPI-Key': "074ca7a0c0msh5e211b173d20249p1d0b43jsn5c770313e32e",
+        'X-RapidAPI-Host': "website-article-data-extraction-and-text-mining1.p.rapidapi.com"
+    }
+
+    conn.request("GET", f"/v1/scrape?url={url_to_scrape}&device=desktop&country=us&block_ads=true&js=true&include_html=false", headers=headers)
+    res = conn.getresponse()
+    scraped_data = res.read()
+
+    return jsonify({'scraped_data': json.loads(scraped_data.decode("utf-8"))})
+
 
 # Health Endpoint
 @app.route('/health')
@@ -119,6 +242,7 @@ def health():
         description: Service is healthy
     """
     return jsonify({'status': 'Service 2 is healthy'})
+
 
 # ... Other middleware and configurations
 
