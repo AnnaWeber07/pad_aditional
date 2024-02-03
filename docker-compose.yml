@@ -1,0 +1,83 @@
+version: '3'
+
+services:
+  gateway:
+    build:
+      context: ./Gateway
+    ports:
+      - "3000:3000"
+    networks:
+      - my_network
+    depends_on:
+      - service1
+      - service2
+    environment:
+      - REDIS_HOST=redis
+    # Add other configurations as needed
+
+  service1:
+    build:
+      context: ./Microservice 1
+    ports:
+      - "3001:3001"
+      - "3101:3101"  # Additional instance
+      - "3201:3201"  # Additional instance
+    networks:
+      - my_network
+    environment:
+      - POSTGRES_DB=service1_db
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=admin
+    # Add other configurations as needed
+
+  service2:
+    build:
+      context: ./Miroservice 2
+    ports:
+      - "3002:3002"
+      - "3102:3102"  # Additional instance
+      - "3202:3202"  # Additional instance
+    networks:
+      - my_network
+    environment:
+      - POSTGRES_DB=service2_db
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=admin
+    # Add other configurations as needed
+
+  prometheus:
+    image: prom/prometheus
+    volumes:
+      - ./prometheus:/etc/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - my_network
+    depends_on:
+      - gateway
+      - service1
+      - service2
+
+  grafana:
+    image: grafana/grafana
+    ports:
+      - "3003:3003"
+    networks:
+      - my_network
+    depends_on:
+      - prometheus
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_USER=admin
+      - PROMETHEUS_DATASOURCE_URL=http://prometheus:9090
+
+  redis:
+    image: redis
+    ports:
+      - "6379:6379"
+    networks:
+      - my_network
+
+networks:
+  my_network:
+    driver: bridge

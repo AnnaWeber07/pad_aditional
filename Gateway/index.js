@@ -4,13 +4,18 @@ const cors = require('cors');
 const promClient = require('prom-client');
 const swaggerJsdoc = require('swagger-jsdoc');
 const swaggerUi = require('swagger-ui-express');
-
 const sgMail = require('@sendgrid/mail');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Prometheus Metrics
+promClient.collectDefaultMetrics();
+const gatewayRequestsCounter = new promClient.Counter({
+    name: 'gateway_requests_total',
+    help: 'Total number of requests to Gateway',
+});
 // Swagger options
 const swaggerOptions = {
     definition: {
@@ -60,6 +65,12 @@ const updateServiceStatuses = async () => {
     }
 };
 
+// Endpoint for Prometheus to scrape metrics
+app.get('/metrics', (req, res) => {
+    res.set('Content-Type', promClient.register.contentType);
+    res.end(promClient.register.metrics());
+});
+
 // New Endpoint to Get Microservices Status
 /**
  * @swagger
@@ -85,7 +96,8 @@ app.get('/status', (req, res) => {
 });
 
 
-// New Endpoint to Subscribe Users
+
+
 /**
  * @swagger
  * /subscribe:
@@ -105,17 +117,35 @@ app.get('/status', (req, res) => {
  *       200:
  *         description: Successful subscription
  *       400:
- *         description: Bad request, email is required
+ *         description: Bad request, email is required or invalid
  */
-app.post('/subscribe', (req, res) => {
+app.post('/subscribe', async (req, res) => {
     const { email } = req.body;
-    if (email) {
-        subscribedUsers.push(email);
-        res.json({ subscribedUsers });
-    } else {
-        res.status(400).json({ error: 'Email is required for subscription' });
+
+    if (!email) {
+        return res.status(400).json({ error: 'Email is required for subscription' });
+    }
+
+    try {
+        // Call the validate-email endpoint
+        const validationResponse = await axios.post('http://localhost:3002/validate-email', { email });
+
+        // Check if email is valid based on the validation response
+        if (validationResponse.data.result.valid) {
+            // If email is valid, subscribe the user
+            subscribedUsers.push(email);
+            return res.json({ subscribedUsers });
+        } else {
+            // If email is not valid, return an error
+            return res.status(400).json({ error: 'Invalid email address' });
+        }
+    } catch (error) {
+        // Handle errors from the validation endpoint
+        console.error('Error validating email:', error.message);
+        return res.status(500).json({ error: 'Internal server error' });
     }
 });
+
 
 // New Endpoint to Unsubscribe Users
 /**
@@ -142,70 +172,6 @@ app.post('/unsubscribe', (req, res) => {
     subscribedUsers = subscribedUsers.filter(user => user !== email);
     res.json({ subscribedUsers });
 });
-
-// New Endpoint to Fetch and Send Joke to Subscribers
-/**
- * @swagger
- * /fetch-and-send-joke:
- *   post:
- *     summary: Fetch and Send Joke to Subscribers
- *     description: Endpoint to fetch and send a joke to subscribed users.
- *     responses:
- *       200:
- *         description: Joke sent to subscribers successfully
- *       500:
- *         description: Error fetching joke from Service 1
- */
-app.post('/fetch-and-send-joke', async (req, res) => {
-    try {
-        // Fetch a joke from Service 1
-        const response = await axios.get('http://localhost:3001/fetch-joke');
-        const jokeData = response.data;
-
-        // Check if there is an error in the response
-        if (jokeData.error) {
-            console.error('Error fetching joke from Service 1:', jokeData.message);
-            res.status(500).json({ error: 'Error fetching joke from Service 1' });
-        } else {
-            // Log the entire joke data for inspection
-            console.log('Received Joke from Service 1:', jokeData);
-
-            // Extract relevant properties and log them separately
-            const joke = {
-                error: jokeData.error,
-                category: jokeData.category,
-                type: jokeData.type,
-                setup: jokeData.setup,
-                delivery: jokeData.delivery,
-                flags: jokeData.flags,
-                id: jokeData.id,
-                safe: jokeData.safe,
-                lang: jokeData.lang,
-            };
-            console.log('Parsed Joke from Service 1:', joke);
-
-            // Send the joke to all subscribed users
-            for (const email of subscribedUsers) {
-                try {
-                    // Update this part based on your email sending logic
-                    console.log(`Joke sent to ${email}`);
-                } catch (error) {
-                    console.error(`Error sending joke to ${email}:`, error.message);
-                }
-            }
-
-            res.json({ status: 'Joke sent to subscribers' });
-        }
-    } catch (error) {
-        console.error('Error fetching joke from Service 1:', error.message);
-        res.status(500).json({ error: 'Error fetching joke from Service 1' });
-    }
-});
-
-// Swagger UI endpoint
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
-
-
 
 // Endpoint to Validate Email
 /**
@@ -610,53 +576,101 @@ function incrementCounters() {
 
 // ... Other endpoints and configurations
 
+// Swagger UI endpoint
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+
+
+
+
+// ... Other endpoints and configurations
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`Gateway is running on port ${PORT}`);
 });
 
-// Periodically update service statuses every 5 seconds
-setInterval(updateServiceStatuses, 10000);
-
-// Periodically send jokes to all subscribed users every 5 seconds
+// Periodically send jokes and news to all subscribed users every 5 seconds
 setInterval(async () => {
     try {
         // Fetch a joke from Service 1
-        const response = await axios.get('http://localhost:3001/fetch-joke');
-        const jokeData = response.data;
+        const jokeResponse = await axios.get('http://localhost:3001/fetch-joke');
+        const jokeData = jokeResponse.data;
 
-        // Check if there is an error in the response
+        // Check if there is an error in the joke response
         if (jokeData.error) {
-            console.error('Error fetching joke from Service 1:', jokeData.message);
-        } else {
-            // Log the entire joke data for inspection
-            console.log('Received Joke from Service 1:', jokeData);
+            console.error('Error fetching joke:', jokeData.message);
+            return;
+        }
 
-            // Extract relevant properties and log them separately
-            const joke = {
-                error: jokeData.error,
-                category: jokeData.category,
-                type: jokeData.type,
-                setup: jokeData.setup,
-                delivery: jokeData.delivery,
-                flags: jokeData.flags,
-                id: jokeData.id,
-                safe: jokeData.safe,
-                lang: jokeData.lang,
-            };
-            console.log('Parsed Joke from Service 1:', joke);
+        // Log the entire joke data for inspection
+        console.log('Received Joke from Service 1:', jokeData);
 
-            // Send the joke to all subscribed users
-            for (const email of subscribedUsers) {
-                try {
-                    // Update this part based on your email sending logic
-                    console.log(`Joke sent to ${email}`);
-                } catch (error) {
-                    console.error(`Error sending joke to ${email}:`, error.message);
-                }
+        // Extract relevant properties and log them separately
+        const joke = {
+            type: jokeData.type,
+            setup: jokeData.setup,
+            delivery: jokeData.delivery,
+        };
+        console.log('Parsed Joke from Service 1:', joke);
+
+        // Fetch news based on a specific category
+        const newsCategory = 'general'; // Replace with the desired category
+        const newsResponse = await axios.get(`http://localhost:3001/fetch-news-category?category=${newsCategory}`);
+        const newsData = newsResponse.data;
+
+        // Check if there is an error in the news response
+        if (newsData.error) {
+            console.error('Error fetching news:', newsData.message);
+            return;
+        }
+
+        // Log the entire news data for inspection
+        console.log('Received News from Service 1:', newsData);
+
+        // Extract relevant properties and log them separately
+        const news = {
+            headlines: newsData.headlines,
+        };
+        console.log('Parsed News from Service 1:', parseNews(news.headlines[0]));
+
+        // Send the joke and news to all subscribed users using a single request
+        for (const email of subscribedUsers) {
+            try {
+                const sendEmailEndpoint = 'http://localhost:3002/send-email';
+
+                // Combine joke and news content in the body of the email
+                const emailContent = `Joke: ${joke.setup}\nDelivery: ${joke.delivery}\n\nNews: ${news.headlines[0].title}\n${news.headlines[0].url}`;
+
+                const emailData = {
+                    type: 'joke',
+                    setup: emailContent,
+                    to: email,
+                };
+
+                const emailResponse = await axios.post(sendEmailEndpoint, emailData);
+                console.log(`Joke and news sent to ${email}. Email response:`, emailResponse.data);
+            } catch (error) {
+                console.error(`Error sending joke and news to ${email}:`, error.message);
             }
         }
     } catch (error) {
-        console.error('Error fetching joke from Service 1:', error.message);
+        console.error('Error fetching joke or news:', error.message);
     }
-}, 10000);
+}, 5000); // Reduced interval to 5 seconds for testing purposes
+
+// Function to parse news data
+function parseNews(newsData) {
+    if (newsData) {
+        return {
+            url: newsData.url || 'Undefined',
+            source: newsData.source || 'Undefined',
+            title: newsData.title || 'Undefined',
+        };
+    } else {
+        return {
+            url: 'Undefined',
+            source: 'Undefined',
+            title: 'Undefined',
+        };
+    }
+}

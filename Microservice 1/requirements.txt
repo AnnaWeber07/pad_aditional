@@ -1,0 +1,8 @@
+asyncio
+Flask
+flask_cors
+prometheus_flask_exporter
+flasgger
+jokeapi
+http.client
+psycopg2

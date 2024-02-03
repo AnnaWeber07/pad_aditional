@@ -27,7 +27,6 @@ conn = psycopg2.connect(
 # Create a cursor object to execute SQL queries
 cursor = conn.cursor()
 
-# Create 'emails' table if not exists
 create_table_query = '''
 CREATE TABLE IF NOT EXISTS emails (
     id SERIAL PRIMARY KEY,
@@ -35,7 +34,15 @@ CREATE TABLE IF NOT EXISTS emails (
     subject VARCHAR(255) NOT NULL,
     content TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS contents (
+    id SERIAL PRIMARY KEY,
+    content_type VARCHAR(255) NOT NULL,
+    to_email VARCHAR(255) NOT NULL,
+    content TEXT NOT NULL
+);
 '''
+
 cursor.execute(create_table_query)
 conn.commit()
 
@@ -43,18 +50,20 @@ conn.commit()
 @app.route('/send-email', methods=['POST'])
 def send_email():
     """
-    Send an email with a joke.
+    Send an email with content (joke, news, or parsed webpage).
     ---
     parameters:
-      - name: joke
+      - name: content
         in: body
         required: true
         schema:
           type: object
           properties:
-            setup:
+            type:
               type: string
-            delivery:
+              enum: ['joke', 'news', 'webpage']
+
+            setup:
               type: string
             to:
               type: string
@@ -66,32 +75,39 @@ def send_email():
     """
     requests_counter.inc()
 
-    # Receive the joke and email from the Gateway
-    joke_data = request.json  # Assuming the joke is sent as JSON in the request body
+    # Receive the content and email from the Gateway
+    content_data = request.json  # Assuming the content is sent as JSON in the request body
 
-    # Check if 'setup' key exists in the joke_data dictionary
-    setup_text = joke_data.get('setup', 'No setup provided')
-    delivery_text = joke_data.get('delivery', 'No delivery provided')
+    # Check if 'type' key exists in the content_data dictionary
+    content_type = content_data.get('type')
+    if not content_type or content_type not in ['joke', 'news', 'webpage']:
+        return jsonify({'error': True, 'message': 'Invalid content type'})
 
-    # Check if 'to' key exists in the joke_data dictionary
-    to_email = joke_data.get('to')
+    # Extract content information based on the content type
+    setup_text = content_data.get('setup', 'No setup provided')
+
+    to_email = content_data.get('to')
+
     if not to_email:
         return jsonify({'error': True, 'message': 'Recipient email not provided'})
 
-    # Save email data to the database
-    save_email_to_database(to_email, "Here's a Joke for You!", f"{setup_text} {delivery_text}")
+    # Save content data to the database
+    save_content_to_database(content_type, to_email, f"{setup_text} ")
 
     # Prepare email payload using SendGrid library
+    subject = get_subject_based_on_type(content_type)
+    content = f"{setup_text} "
+
     message = Mail(
         from_email='heihnnreh@gmail.com',  # Replace with your email address
         to_emails=to_email,
-        subject="Here's a Joke for You!",
-        plain_text_content=f"{setup_text} {delivery_text}"
+        subject=subject,
+        plain_text_content=content
     )
 
     # Send email using the SendGrid API
     try:
-        sg = SendGridAPIClient(api_key="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")
+        sg = SendGridAPIClient(api_key="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")
         response = sg.send(message)
         print(f'Email sent to {to_email}. Response:', response.body)
         return jsonify({'status': 'Email sent successfully'})
@@ -100,11 +116,21 @@ def send_email():
         return jsonify({'error': True, 'message': str(e)})
 
 
-def save_email_to_database(to_email, subject, content):
-    # Save email data to the 'emails' table in the database
-    insert_query = "INSERT INTO emails (to_email, subject, content) VALUES (%s, %s, %s);"
-    cursor.execute(insert_query, (to_email, subject, content))
+def save_content_to_database(content_type, to_email, content):
+    # Save content data to the 'contents' table in the database
+    insert_query = "INSERT INTO contents (content_type, to_email, content) VALUES (%s, %s, %s);"
+    cursor.execute(insert_query, (content_type, to_email, content))
     conn.commit()
+
+
+def get_subject_based_on_type(content_type):
+    # Determine the subject based on the content type
+    if content_type == 'joke':
+        return "Here's a Joke for You!"
+    elif content_type == 'news':
+        return "Latest News Update"
+    elif content_type == 'webpage':
+        return "Parsed Web Page"
 
 # Email Validation Endpoint
 @app.route('/validate-email', methods=['POST'])
@@ -247,5 +273,5 @@ def health():
 # ... Other middleware and configurations
 
 if __name__ == '__main__':
-    start_http_server(8002)  # Expose Prometheus metrics on port 8002
+
     app.run(port=3002)

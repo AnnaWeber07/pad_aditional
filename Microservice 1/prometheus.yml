@@ -1,0 +1,8 @@
+global:
+  scrape_interval:     15s # Set the scrape interval to every 15 seconds.
+
+scrape_configs:
+  - job_name: 'flask_app'
+    static_configs:
+      - targets: ['your_flask_app_container_ip:3001']  # Replace 'your_flask_app_container_ip' with the actual IP address of your Flask container.
+
