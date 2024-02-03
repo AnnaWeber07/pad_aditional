@@ -1,20 +1,69 @@
-# microservice2/app.py
 import json
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from prometheus_client import start_http_server, Counter
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
+from flasgger import Swagger
+import http.client
+import psycopg2
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
+swagger = Swagger(app)  # Initialize Swagger
 
 # Prometheus Metrics
 requests_counter = Counter('service2_requests_total', 'Total number of requests to Service 2')
 
+# Database Connection
+conn = psycopg2.connect(
+    host="localhost",  # Use the correct host where your PostgreSQL is running
+    port=5051,          # Port specified when running the PostgreSQL container
+    user="admin",
+    password="admin",
+    database="postgres"
+)
+
+# Create a cursor object to execute SQL queries
+cursor = conn.cursor()
+
+# Create 'emails' table if not exists
+create_table_query = '''
+CREATE TABLE IF NOT EXISTS emails (
+    id SERIAL PRIMARY KEY,
+    to_email VARCHAR(255) NOT NULL,
+    subject VARCHAR(255) NOT NULL,
+    content TEXT NOT NULL
+);
+'''
+cursor.execute(create_table_query)
+conn.commit()
+
 # New Endpoint to Receive Joke and Send Email
 @app.route('/send-email', methods=['POST'])
 def send_email():
+    """
+    Send an email with a joke.
+    ---
+    parameters:
+      - name: joke
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            setup:
+              type: string
+            delivery:
+              type: string
+            to:
+              type: string
+    responses:
+      200:
+        description: Email sent successfully
+      400:
+        description: Invalid request or missing parameters
+    """
     requests_counter.inc()
 
     # Receive the joke and email from the Gateway
@@ -28,6 +77,9 @@ def send_email():
     to_email = joke_data.get('to')
     if not to_email:
         return jsonify({'error': True, 'message': 'Recipient email not provided'})
+
+    # Save email data to the database
+    save_email_to_database(to_email, "Here's a Joke for You!", f"{setup_text} {delivery_text}")
 
     # Prepare email payload using SendGrid library
     message = Mail(
@@ -47,12 +99,28 @@ def send_email():
         # Handle any exceptions (e.g., network issues) and return an error response
         return jsonify({'error': True, 'message': str(e)})
 
+
+def save_email_to_database(to_email, subject, content):
+    # Save email data to the 'emails' table in the database
+    insert_query = "INSERT INTO emails (to_email, subject, content) VALUES (%s, %s, %s);"
+    cursor.execute(insert_query, (to_email, subject, content))
+    conn.commit()
+
+# ... (Other endpoints and configurations)
+
 # Health Endpoint
-@app.route('/health', methods=['GET'])
+@app.route('/health')
 def health():
+    """
+    Check the health status of the service.
+    ---
+    responses:
+      200:
+        description: Service is healthy
+    """
     return jsonify({'status': 'Service 2 is healthy'})
 
-# ... Other business logic endpoints
+# ... Other middleware and configurations
 
 if __name__ == '__main__':
     start_http_server(8002)  # Expose Prometheus metrics on port 8002

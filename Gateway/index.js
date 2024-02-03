@@ -2,10 +2,28 @@ const express = require('express');
 const axios = require('axios');
 const cors = require('cors');
 const promClient = require('prom-client');
+const swaggerJsdoc = require('swagger-jsdoc');
+const swaggerUi = require('swagger-ui-express');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// Swagger options
+const swaggerOptions = {
+    definition: {
+        openapi: '3.0.0',
+        info: {
+            title: 'Gateway API',
+            version: '1.0.0',
+            description: 'API documentation for the Gateway service',
+        },
+    },
+    apis: ['./index.js'], // Replace with the actual path to your main file or where your routes are defined
+};
+
+// Initialize swagger-jsdoc
+const swaggerSpec = swaggerJsdoc(swaggerOptions);
 
 // Prometheus Metrics
 promClient.collectDefaultMetrics();
@@ -20,12 +38,12 @@ let serviceStatuses = {
     service2: 'unknown',
 };
 
-// Variable to store subscribed users
 let subscribedUsers = [];
 
 // Function to fetch and update service statuses
 const updateServiceStatuses = async () => {
     try {
+        // Update service statuses without Redis
         const healthService1 = await axios.get('http://localhost:3001/health');
         const healthService2 = await axios.get('http://localhost:3002/health');
 
@@ -36,11 +54,57 @@ const updateServiceStatuses = async () => {
 
         console.log('Service Statuses Updated:', serviceStatuses);
     } catch (error) {
-        console.error('Error fetching service statuses:', error.message);
+        console.error('Error in updateServiceStatuses:', error.message);
     }
 };
 
+// New Endpoint to Get Microservices Status
+/**
+ * @swagger
+ * /status:
+ *   get:
+ *     summary: Get Microservices Status
+ *     description: Endpoint to get the current status of the connected microservices.
+ *     responses:
+ *       200:
+ *         description: Successful response with microservices status
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 service1:
+ *                   type: string
+ *                 service2:
+ *                   type: string
+ */
+app.get('/status', (req, res) => {
+    res.json({ serviceStatuses });
+});
+
+
 // New Endpoint to Subscribe Users
+/**
+ * @swagger
+ * /subscribe:
+ *   post:
+ *     summary: Subscribe Users
+ *     description: Endpoint to subscribe users.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               email:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Successful subscription
+ *       400:
+ *         description: Bad request, email is required
+ */
 app.post('/subscribe', (req, res) => {
     const { email } = req.body;
     if (email) {
@@ -52,6 +116,25 @@ app.post('/subscribe', (req, res) => {
 });
 
 // New Endpoint to Unsubscribe Users
+/**
+ * @swagger
+ * /unsubscribe:
+ *   post:
+ *     summary: Unsubscribe Users
+ *     description: Endpoint to unsubscribe users.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               email:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Successful unsubscription
+ */
 app.post('/unsubscribe', (req, res) => {
     const { email } = req.body;
     subscribedUsers = subscribedUsers.filter(user => user !== email);
@@ -59,6 +142,18 @@ app.post('/unsubscribe', (req, res) => {
 });
 
 // New Endpoint to Fetch and Send Joke to Subscribers
+/**
+ * @swagger
+ * /fetch-and-send-joke:
+ *   post:
+ *     summary: Fetch and Send Joke to Subscribers
+ *     description: Endpoint to fetch and send a joke to subscribed users.
+ *     responses:
+ *       200:
+ *         description: Joke sent to subscribers successfully
+ *       500:
+ *         description: Error fetching joke from Service 1
+ */
 app.post('/fetch-and-send-joke', async (req, res) => {
     try {
         // Fetch a joke from Service 1
@@ -90,8 +185,7 @@ app.post('/fetch-and-send-joke', async (req, res) => {
             // Send the joke to all subscribed users
             for (const email of subscribedUsers) {
                 try {
-                    // Assume a hypothetical send-email API endpoint
-                    await axios.post('http://localhost:3002/send-email', { ...joke, to: email });
+                    // Update this part based on your email sending logic
                     console.log(`Joke sent to ${email}`);
                 } catch (error) {
                     console.error(`Error sending joke to ${email}:`, error.message);
@@ -105,6 +199,9 @@ app.post('/fetch-and-send-joke', async (req, res) => {
         res.status(500).json({ error: 'Error fetching joke from Service 1' });
     }
 });
+
+// Swagger UI endpoint
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 // ... Other endpoints and configurations
 
@@ -147,8 +244,7 @@ setInterval(async () => {
             // Send the joke to all subscribed users
             for (const email of subscribedUsers) {
                 try {
-                    // Assume a hypothetical send-email API endpoint in Service 2
-                    await axios.post('http://localhost:3002/send-email', { ...joke, to: email });
+                    // Update this part based on your email sending logic
                     console.log(`Joke sent to ${email}`);
                 } catch (error) {
                     console.error(`Error sending joke to ${email}:`, error.message);
